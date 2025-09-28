@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html> 
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Say No To Bad Checksums - "Secure" S3 Upload</title>
+    <style>
+        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+        button { padding: .5rem 1rem; }
+        pre { background: #111; color: #0f0; padding: 1rem; overflow-x: auto; }
+        li { margin: .25rem 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas monospace; }
+    </style> ; m 
+</head>
+
+<body>
+    <h1> "Secure" S3 Upload</h1>
+    <p> This is a demo application to show how to securely upload files to S3 using pre-signed URLs and a checksum verification process. </p>
+    <input type="file" id="file" /> 
+    <button id="btn">Upload</button>
+    <pre id="out"></pre>
+
+    <h2>Uploaded Files</h2>
+    <ul id="uploaded-files-list"></ul>
+
+    <script src="app.js"></script>
+</body>
+</html>
