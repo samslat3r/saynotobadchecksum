@@ -1,16 +1,16 @@
-variable project_name {type = string default = "sam-secure" }
-variable "env"  {type = string default = "dev" }
-variable "aws_region" {type = string default = "us-west-2" }
+variable project_name {description = "Project Name" type = string default = "sam-secure" }
+variable "env"  {description = "Environment Name" type = string default = "dev" }
+variable "aws_region" {description = "AWS Region" type = string default = "us-west-2" }
 
-variable "bucket_name" {type string default = "" }
-variable "ddb_table_name" {type = string default = "" }
+variable "bucket_name" {description = "Override S3 Bucket Name (optional)" type = string default = "" }
+variable "ddb_table_name" {description = "Override DynamoDB Table Name (optional)" type = string default = "" }
 
-variable "vt_api_key" { type = string sensitive = true }
-variable "presign_api_key" {type = string sensitive = true }
+variable "vt_api_key" {description = "VirusTotal API Key" type = string sensitive = true }
+variable "presign_api_key" {description = "API key used by /presign" type = string sensitive = true }
 
-# Lambda packaging: point to artifacts built by Jenkins into lambdas/dist-*.zip
 
 variable "lambda_artifacts" {
+    description = "Paths to Lambda deployment packages"
     type = object({
         presign = string
         list_files = string
