@@ -99,3 +99,11 @@ module "s3_notifications" {
     lambda_name = module.lambda_process.name
     events = ["s3:ObjectCreated:*"]
 }
+
+module "gha_oidc" {
+    source = "../modules/iam_oidc_github"
+    name_prefix = local.name_prefix
+    owner = var.github_owner
+    repo = var.github_repo
+    branch = var.github_branch
+}

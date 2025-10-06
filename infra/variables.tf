@@ -50,3 +50,19 @@ variable "lambda_artifacts" {
         process_upload = "../lambdas/dist-process_upload.zip"
     }
 }
+
+# GitHub OIDC variables
+
+variable "github_owner" {
+  type        = string
+  default = "samslat3r"
+}
+
+variable "github_repo" {
+  type        = string
+  default = "saynotobadchecksum"
+}
+variable "github_branch" {
+  type        = string
+  default = "master"
+}
