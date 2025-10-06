@@ -3,6 +3,9 @@ resource "aws_dynamodb_table" "main" {
     billing_mode = "PAY_PER_REQUEST"
     hash_key = "id"
 
-    attribute { name = "object_key" type = "S" }
+    attribute {
+        name = "object_key"
+        type = "S"
+    }
     tags = var.tags
 }

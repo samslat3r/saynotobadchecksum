@@ -1,4 +1,7 @@
-variable "name" { description = "API name" type = string }
+variable "name" {
+  description = "API name"
+  type        = string
+}
 variable "routes" {
     description = "List of route objects"
     type = list(object({

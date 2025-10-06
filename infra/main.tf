@@ -34,7 +34,7 @@ module "iam" {
 }
 
 module "lambda_presign" {
-    source = "../modules/lambda_function
+    source = "../modules/lambda_function"
     name = "${local.name_prefix}-presign"
     role_arn = module.iam.lambda_role_arn
     filename = var.lambda_artifacts.presign
@@ -42,7 +42,7 @@ module "lambda_presign" {
     env = {
         UPLOADS_BUCKET = module.s3.bucket_name
         USE_API_KEY = "true"
-        PRESIGN_SECRET_ID = module.secrets.PRESIGN_SECRET_ID
+        PRESIGN_SECRET_ID = module.secrets.presign_secret_id
     }
 }
 
@@ -53,7 +53,9 @@ module "lambda_list" {
     filename = var.lambda_artifacts.list_files
     timeout = 10
     runtime = "python3.12"
-    env = { DDB_TABLE = module.ddb.table_name }
+    env = {
+        DDB_TABLE = module.ddb.table_name
+    }
 }
 
 module "lambda_process" {
@@ -67,7 +69,7 @@ module "lambda_process" {
     env = {
         DDB_TABLE = module.ddb.table_name
         VT_SECRET_ID = module.secrets.vt_secret_id
-        }
+    }
 }
 
 module "api" {
