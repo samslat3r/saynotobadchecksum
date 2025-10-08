@@ -1,1 +1,2 @@
-# AWS Lambda includes boto3 and botocore; no external deps required
+boto3
+requests
