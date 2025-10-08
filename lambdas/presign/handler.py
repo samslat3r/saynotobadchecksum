@@ -44,6 +44,14 @@ def handler(event, context):
     key_prefix = body.get('prefix', 'user-uploads/')
     filename = body.get('filename', f'upload-{int(time.time())}')
     
+    # Validate content type
+    
+    if not content_type or content_type not in ALLOWED_CONTENT_TYPES:
+        return {
+            'statusCode': 400,
+            'body': json.dumps({'error': 'Invalid or missing content_type'})
+        }
+    
     key = f"{key_prefix}/{int(time.time())}-{filename}"
     
     # "PUT" presigns can't enforce max size, only "POST" can
@@ -60,3 +68,4 @@ def handler(event, context):
     }
     
 
+# It wasn't ContextType but content_type and filename not file_name 
