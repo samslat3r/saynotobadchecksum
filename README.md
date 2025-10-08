@@ -2,7 +2,7 @@
 
 
 ## Overview 
-This is a demonstration of a fully serverless pipeline for secure file uploads with automaated malware scanning. Currently only supports uploads through a presigned URL. Malicious files are auto-deleted.
+This is a demonstration of a fully serverless pipeline for secure file uploads with automated malware scanning. Currently only supports uploads through a presigned URL. Malicious files are auto-deleted.
 
 Files uploaded through a presigned URL are stored in S3, indexed in DynamoDB, and scanned with VirusTotal. 
 
