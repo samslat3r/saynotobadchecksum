@@ -2,13 +2,21 @@ variable "name_prefix" {
   description = "Name prefix"
   type        = string
 }
-variable "vt_api_key" {
-  description = "VirusTotal API key"
+
+variable "kms_key_id" {
+  description = "Optional KMS key ARN/ID"
   type        = string
-  sensitive   = true
+  default     = ""
 }
-variable "presign_api_key" {
-  description = "Presign API key"
-  type        = string
-  sensitive   = true
+
+variable "tags" {
+  description = "Tags to apply to resources"
+  type        = map(string)
+  default     = {}
+}
+
+variable "recovery_window_in_days" {
+  description = "SecretsManager recovery window (7-30)"
+  type        = number
+  default     = 7
 }
