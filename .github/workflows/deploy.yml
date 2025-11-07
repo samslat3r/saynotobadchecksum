@@ -1,27 +1,722 @@
-name: unit-tests
+name: ci-terraform
 
 on:
-    push:
-        branches: [ master ]
-    pull_request:
-        branches: [ master ]
+  push:
+    branches: [ master, main ]
+    paths:
+      - 'infra/environments/**'
+      - 'modules/**'
+      - 'lambdas/**'
+      - 'web/**'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [ master, main ]
+    paths:
+      - 'infra/environments/**'
+      - 'modules/**'
+      - 'lambdas/**'
+      - 'web/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+    inputs:
+      run_for_env:
+        description: "Run for env (dev|staging|prod). Leave blank for auto-detect"
+        required: false
+        type: string
 
 permissions:
-    contents: read
+  id-token: write
+  contents: read
+  pull-requests: write
 
 jobs:
-    unit:
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
+  preflight:
+    name: Preflight (verify required files)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Verify required directories exist
+        run: |
+          set -euo pipefail
+          
+          # Check core directories
+          for d in infra modules lambdas web; do
+            [ -d "$d" ] || { echo "::error::Missing directory '$d'"; exit 1; }
+          done
+          
+          # Check environment directories
+          for env in dev staging prod; do
+            [ -d "infra/environments/$env" ] || { echo "::error::Missing environment folder 'infra/environments/$env'"; exit 1; }
+          done
+          
+          # Check lambda directories and required files
+          for fn in process_upload presign list_files; do
+            [ -d "lambdas/$fn" ] || { echo "::error::Missing lambda folder 'lambdas/$fn'"; exit 1; }
+            ls lambdas/$fn/*.py >/dev/null 2>&1 || { echo "::error::No .py files in lambdas/$fn"; exit 1; }
+            [ -f "lambdas/$fn/requirements.txt" ] || { echo "::error::Missing requirements.txt in lambdas/$fn"; exit 1; }
+          done
+          
+          # FIX: Check for the correct handler.py file name
+          [ -f "lambdas/process_upload/handler.py" ] || { echo "::error::Missing handler.py in lambdas/process_upload (found hander.py instead?)"; exit 1; }
+      
+      - name: Validate Terraform formatting (recursive)
+        run: |
+          # Check if all Terraform files are properly formatted
+          terraform fmt -check -recursive || { 
+            echo "::error::Terraform files are not formatted. Run 'terraform fmt -recursive' locally"
+            exit 1
+          }
 
-            - uses: actions/setup-python@v5
-              with:
-                  python-version: '3.12'
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    needs: preflight
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Install dev requirements if they exist
+          if [ -f requirements-dev.txt ]; then 
+            pip install -r requirements-dev.txt
+          fi
+          # Install pytest if not in requirements
+          pip install pytest pytest-cov
+      
+      - name: Run unit tests
+        run: |
+          # FIX: Run tests with better discovery and reporting
+          # Try to run tests for each lambda individually for better error reporting
+          for lambda_dir in lambdas/*/; do
+            if [ -d "${lambda_dir}tests" ]; then
+              echo "::group::Testing $(basename $lambda_dir)"
+              pytest "${lambda_dir}tests" -v --tb=short || {
+                echo "::error::Tests failed for $(basename $lambda_dir)"
+                exit 1
+              }
+              echo "::endgroup::"
+            fi
+          done
+          
+          # Also run any tests at root level
+          if [ -d "tests" ] || [ -f "test_*.py" ]; then
+            echo "::group::Root level tests"
+            pytest . -v --tb=short --ignore=lambdas
+            echo "::endgroup::"
+          fi
 
-            - name: Install dev dependencies
-              run: pip install -r requirements-dev.txt
+  detect:
+    name: Detect changed environments
+    runs-on: ubuntu-latest
+    needs: unit
+    outputs:
+      dev: ${{ steps.set-env.outputs.dev }}
+      staging: ${{ steps.set-env.outputs.staging }}
+      prod: ${{ steps.set-env.outputs.prod }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - id: pf
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            shared:
+              - 'modules/**'
+              - 'lambdas/**'
+            dev:
+              - 'infra/environments/dev/**'
+            staging:
+              - 'infra/environments/staging/**'
+            prod:
+              - 'infra/environments/prod/**'
+      
+      - id: set-env
+        name: Determine which environments to deploy
+        run: |
+          # If shared resources changed, deploy all environments
+          if [ "${{ steps.pf.outputs.shared }}" = "true" ]; then
+            echo "::notice::Shared resources changed, will deploy all environments"
+            echo "dev=true" >> $GITHUB_OUTPUT
+            echo "staging=true" >> $GITHUB_OUTPUT
+            echo "prod=true" >> $GITHUB_OUTPUT
+          else
+            # Otherwise only deploy environments with changes
+            echo "dev=${{ steps.pf.outputs.dev }}" >> $GITHUB_OUTPUT
+            echo "staging=${{ steps.pf.outputs.staging }}" >> $GITHUB_OUTPUT
+            echo "prod=${{ steps.pf.outputs.prod }}" >> $GITHUB_OUTPUT
+          fi
+
+  build:
+    name: Build Lambda artifacts
+    runs-on: ubuntu-latest
+    needs: unit
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('lambdas/*/requirements.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+      
+      - name: Build Lambda deployment packages
+        run: |
+          set -euo pipefail
+          
+          # Build each Lambda function
+          for fn in process_upload presign list_files; do
+            echo "::group::Building lambda: $fn"
             
-            - name: Run tests
-              run: pytest -qv
+            pushd "lambdas/$fn"
             
+            # Clean build directory
+            rm -rf build && mkdir -p build
+            
+            # Install dependencies into build directory
+            python -m pip install --upgrade pip
+            if [ -s requirements.txt ]; then
+              python -m pip install -r requirements.txt -t build
+            fi
+            
+            # Copy Lambda code
+            cp -R *.py build/ 2>/dev/null || true
+            
+            # Create deployment package
+            # FIX: Ensure the zip is created in the lambda directory
+            (cd build && zip -qr "../dist-${fn}.zip" . \
+              -x "*__pycache__/*" "*.pyc" "*.pyo" \
+              "*.dist-info/*" "*.egg-info/*" ".pytest_cache/*")
+            
+            # Verify zip was created
+            [ -f "dist-${fn}.zip" ] || { 
+              echo "::error::Failed to create dist-${fn}.zip"
+              exit 1
+            }
+            
+            echo "Created dist-${fn}.zip ($(du -h dist-${fn}.zip | cut -f1))"
+            popd
+            
+            echo "::endgroup::"
+          done
+      
+      - name: Upload Lambda artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-zips
+          path: lambdas/*/dist-*.zip
+          if-no-files-found: error
+
+  build-web:
+    name: Prepare Frontend
+    runs-on: ubuntu-latest
+    needs: unit
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate web assets
+        working-directory: web
+        run: |
+          [ -f "index.html" ] || { echo "::error::Missing index.html"; exit 1; }
+          [ -f "app.js" ] || { echo "::error::Missing app.js"; exit 1; }
+          echo "::notice::Web assets validated"
+
+      - name: Upload web artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: web/
+          if-no-files-found: error
+
+  plan-apply:
+    name: Plan/Apply - ${{ matrix.env }}
+    runs-on: ubuntu-latest
+    needs: [ detect, build, build-web ]
+    # Environment-specific concurrency control
+    concurrency:
+      group: terraform-${{ matrix.env }}-${{ github.ref }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - env: dev
+            aws_region: us-west-2
+          - env: staging
+            aws_region: us-west-2
+          - env: prod
+            aws_region: us-west-2
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: gate
+        name: Determine if this environment should be deployed
+        run: |
+          set -euo pipefail
+          
+          sel=false
+          
+          # Check if changes were detected for this environment
+          case "${{ matrix.env }}" in
+            dev)     [ "${{ needs.detect.outputs.dev }}" = "true" ] && sel=true ;;
+            staging) [ "${{ needs.detect.outputs.staging }}" = "true" ] && sel=true ;;
+            prod)    [ "${{ needs.detect.outputs.prod }}" = "true" ] && sel=true ;;
+          esac
+          
+          # FIX: Manual override is now ADDITIVE, not replacement
+          # If manually triggered for specific env, also select it
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.run_for_env }}" ]; then
+            case "${{ github.event.inputs.run_for_env }}" in
+              dev|staging|prod)
+                if [ "${{ github.event.inputs.run_for_env }}" = "${{ matrix.env }}" ]; then
+                  echo "::notice::Manually selected environment: ${{ matrix.env }}"
+                  sel=true
+                fi
+                ;;
+              *)
+                echo "::error::Invalid run_for_env value '${{ github.event.inputs.run_for_env }}'. Use: dev|staging|prod"
+                exit 1
+                ;;
+            esac
+          fi
+          
+          echo "selected=$sel" >> "$GITHUB_OUTPUT"
+          
+          if [ "$sel" = "true" ]; then
+            echo "::notice::Will deploy to ${{ matrix.env }} environment"
+          else
+            echo "::notice::Skipping ${{ matrix.env }} environment (no changes detected)"
+          fi
+
+      # All subsequent steps only run if environment is selected
+      - name: Download Lambda artifacts
+        if: steps.gate.outputs.selected == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-zips
+          path: lambdas
+
+      # FIX: Move Lambda zips to correct locations
+      - name: Organize Lambda artifacts
+        if: steps.gate.outputs.selected == 'true'
+        run: |
+          # Move zips to their respective directories
+          for fn in process_upload presign list_files; do
+            if [ -f "lambdas/dist-${fn}.zip" ]; then
+              mkdir -p "lambdas/${fn}"
+              mv "lambdas/dist-${fn}.zip" "lambdas/${fn}/"
+              echo "Moved dist-${fn}.zip to lambdas/${fn}/"
+            fi
+          done
+          
+          # List final structure
+          find lambdas -name "*.zip" -type f
+
+      - name: Setup Terraform
+        if: steps.gate.outputs.selected == 'true'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      # FIX: Create cache directory before using it
+      - name: Create Terraform plugin cache directory
+        if: steps.gate.outputs.selected == 'true'
+        run: mkdir -p ~/.terraform.d/plugin-cache
+
+      - name: Cache Terraform plugins
+        if: steps.gate.outputs.selected == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.terraform.d/plugin-cache
+            infra/environments/${{ matrix.env }}/.terraform
+          # More specific cache key
+          key: tf-${{ runner.os }}-${{ matrix.env }}-${{ hashFiles('infra/environments/${{ matrix.env }}/**/*.tf', 'modules/**/*.tf') }}
+          restore-keys: |
+            tf-${{ runner.os }}-${{ matrix.env }}-
+
+      # FIX: Determine AWS role based on environment
+      - name: Configure AWS Credentials (OIDC)
+        if: steps.gate.outputs.selected == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # FIX: Secrets can't be used in matrix, so we use conditional logic here
+          role-to-assume: |-
+            ${{
+              matrix.env == 'dev' && secrets.AWS_ROLE_DEV ||
+              matrix.env == 'staging' && secrets.AWS_ROLE_STAGING ||
+              matrix.env == 'prod' && secrets.AWS_ROLE_PROD ||
+              ''
+            }}
+          aws-region: ${{ matrix.aws_region }}
+
+      - name: Terraform Init
+        if: steps.gate.outputs.selected == 'true'
+        working-directory: infra/environments/${{ matrix.env }}
+        env:
+          TF_PLUGIN_CACHE_DIR: ~/.terraform.d/plugin-cache
+        run: |
+          terraform init -input=false -backend=true
+          
+          # Verify backend is configured
+          terraform providers
+
+      - name: Terraform Validate
+        if: steps.gate.outputs.selected == 'true'
+        working-directory: infra/environments/${{ matrix.env }}
+        run: |
+          terraform fmt -check
+          terraform validate
+
+      # FIX: Pass Lambda artifact paths to Terraform
+      - name: Terraform Plan
+        if: steps.gate.outputs.selected == 'true'
+        working-directory: infra/environments/${{ matrix.env }}
+        run: |
+          terraform plan -out=tfplan -input=false \
+            -var='lambda_artifacts={presign="../../../lambdas/presign/dist-presign.zip",list_files="../../../lambdas/list_files/dist-list_files.zip",process_upload="../../../lambdas/process_upload/dist-process_upload.zip"}'
+          
+          # Generate human-readable plan for PR comments
+          terraform show -no-color tfplan > tfplan.txt
+
+      - name: Upload Plan Artifacts
+        if: steps.gate.outputs.selected == 'true' && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ matrix.env }}
+          path: |
+            infra/environments/${{ matrix.env }}/tfplan
+            infra/environments/${{ matrix.env }}/tfplan.txt
+
+      # Add PR comment with plan summary (optional but recommended)
+      - name: Comment PR with Plan
+        if: steps.gate.outputs.selected == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('infra/environments/${{ matrix.env }}/tfplan.txt', 'utf8');
+            const planLines = plan.split('\n');
+            const summaryLine = planLines.find(l => l.includes('Plan:')) || 'No changes';
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Terraform Plan - ${{ matrix.env }}\n\n${summaryLine}\n\n<details><summary>Full Plan</summary>\n\n\`\`\`\n${plan}\n\`\`\`\n</details>`
+            });
+
+      - name: Terraform Apply
+        # FIX: Use github.ref_name for cleaner branch name check
+        if: |
+          steps.gate.outputs.selected == 'true' &&
+          github.event_name == 'push' &&
+          (github.ref_name == 'master' || github.ref_name == 'main')
+        working-directory: infra/environments/${{ matrix.env }}
+        run: |
+          echo "::notice::Applying Terraform changes to ${{ matrix.env }}"
+          terraform apply -input=false -auto-approve tfplan
+
+      - name: Inject Secrets into AWS Secrets Manager
+        # FIX: Use github.ref_name for cleaner check
+        if: |
+          steps.gate.outputs.selected == 'true' &&
+          github.event_name == 'push' &&
+          (github.ref_name == 'master' || github.ref_name == 'main')
+        working-directory: infra/environments/${{ matrix.env }}
+        env:
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+          PRESIGN_API_KEY: ${{ secrets.PRESIGN_API_KEY }}
+        run: |
+          set -euo pipefail
+          
+          # Get secret ARNs from Terraform outputs
+          VT_SECRET_ARN=$(terraform output -raw vt_secret_arn 2>/dev/null || echo "")
+          PRESIGN_SECRET_ARN=$(terraform output -raw presign_secret_arn 2>/dev/null || echo "")
+          
+          # Update VT API key if both ARN and key exist
+          if [ -n "${VT_SECRET_ARN}" ] && [ -n "${VT_API_KEY}" ]; then
+            echo "::notice::Updating VT API key in Secrets Manager"
+            aws secretsmanager put-secret-value \
+              --secret-id "$VT_SECRET_ARN" \
+              --secret-string "{\"VT_API_KEY\":\"$VT_API_KEY\"}" \
+              || echo "::warning::Failed to update VT API key"
+          else
+            [ -z "${VT_SECRET_ARN}" ] && echo "::warning::VT secret ARN not found in outputs"
+            [ -z "${VT_API_KEY}" ] && echo "::warning::VT_API_KEY secret not configured"
+          fi
+          
+          # Update Presign API key if both ARN and key exist
+          if [ -n "${PRESIGN_SECRET_ARN}" ] && [ -n "${PRESIGN_API_KEY}" ]; then
+            echo "::notice::Updating Presign API key in Secrets Manager"
+            aws secretsmanager put-secret-value \
+              --secret-id "$PRESIGN_SECRET_ARN" \
+              --secret-string "{\"PRESIGN_API_KEY\":\"$PRESIGN_API_KEY\"}" \
+              || echo "::warning::Failed to update Presign API key"
+          else
+            [ -z "${PRESIGN_SECRET_ARN}" ] && echo "::warning::Presign secret ARN not found in outputs"
+            [ -z "${PRESIGN_API_KEY}" ] && echo "::warning::PRESIGN_API_KEY secret not configured"
+          fi
+
+      - name: Validate Lambda Deployments
+        if: |
+          steps.gate.outputs.selected == 'true' &&
+          github.event_name == 'push' &&
+          (github.ref_name == 'master' || github.ref_name == 'main')
+        working-directory: infra/environments/${{ matrix.env }}
+        run: |
+          set -euo pipefail
+          
+          echo "::group::Validating Lambda deployments"
+          
+          # Get Lambda function names from Terraform outputs (if available)
+          # Map function names to output names
+          declare -A output_map=(
+            ["presign"]="lambda_presign_name"
+            ["list_files"]="lambda_list_files_name"
+            ["process_upload"]="lambda_process_upload_name"
+          )
+          
+          for fn in presign list_files process_upload; do
+            output_name="${output_map[$fn]}"
+            FUNCTION_NAME=$(terraform output -raw "$output_name" 2>/dev/null || echo "")
+            
+            if [ -n "${FUNCTION_NAME}" ]; then
+              echo "Testing Lambda: ${FUNCTION_NAME}"
+              
+              # Check function exists and is active
+              aws lambda get-function --function-name "${FUNCTION_NAME}" \
+                --query 'Configuration.State' --output text | grep -q "Active" \
+                || echo "::warning::Lambda ${FUNCTION_NAME} is not in Active state"
+              
+              # Optionally invoke with test payload
+              # aws lambda invoke --function-name "${FUNCTION_NAME}" \
+              #   --payload '{"test": true}' /tmp/response.json \
+              #   || echo "::warning::Failed to invoke ${FUNCTION_NAME}"
+            fi
+          done
+          
+          echo "::endgroup::"
+
+      # FIX: Output the API endpoint for frontend configuration
+      - name: Output API Endpoint
+        if: |
+          steps.gate.outputs.selected == 'true' &&
+          github.event_name == 'push' &&
+          (github.ref_name == 'master' || github.ref_name == 'main')
+        working-directory: infra/environments/${{ matrix.env }}
+        run: |
+          API_ENDPOINT=$(terraform output -raw api_base_url 2>/dev/null || echo "")
+          if [ -n "${API_ENDPOINT}" ]; then
+            echo "::notice::API Endpoint for ${{ matrix.env }}: ${API_ENDPOINT}"
+            echo "Update web/app.js with this endpoint"
+          fi
+
+  deploy-web:
+    name: Deploy Frontend - ${{ matrix.env }}
+    runs-on: ubuntu-latest
+    needs: [ detect, plan-apply, build-web ]
+    if: |
+      always() &&
+      needs.plan-apply.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - env: dev
+            aws_region: us-west-2
+          - env: staging
+            aws_region: us-west-2
+          - env: prod
+            aws_region: us-west-2
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: gate
+        name: Determine if this environment should be deployed
+        run: |
+          set -euo pipefail
+          
+          sel=false
+          
+          case "${{ matrix.env }}" in
+            dev)     [ "${{ needs.detect.outputs.dev }}" = "true" ] && sel=true ;;
+            staging) [ "${{ needs.detect.outputs.staging }}" = "true" ] && sel=true ;;
+            prod)    [ "${{ needs.detect.outputs.prod }}" = "true" ] && sel=true ;;
+          esac
+          
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.run_for_env }}" ]; then
+            case "${{ github.event.inputs.run_for_env }}" in
+              dev|staging|prod)
+                if [ "${{ github.event.inputs.run_for_env }}" = "${{ matrix.env }}" ]; then
+                  sel=true
+                fi
+                ;;
+            esac
+          fi
+          
+          echo "selected=$sel" >> "$GITHUB_OUTPUT"
+
+      - name: Download web artifacts
+        if: steps.gate.outputs.selected == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: web-staging
+
+      - name: Configure AWS Credentials (OIDC)
+        if: steps.gate.outputs.selected == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: |-
+            ${{
+              matrix.env == 'dev' && secrets.AWS_ROLE_DEV ||
+              matrix.env == 'staging' && secrets.AWS_ROLE_STAGING ||
+              matrix.env == 'prod' && secrets.AWS_ROLE_PROD ||
+              ''
+            }}
+          aws-region: ${{ matrix.aws_region }}
+
+      - name: Setup Terraform
+        if: steps.gate.outputs.selected == 'true'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Terraform Init
+        if: steps.gate.outputs.selected == 'true'
+        working-directory: infra/environments/${{ matrix.env }}
+        run: terraform init -input=false -backend=true
+
+      - name: Get S3 bucket name from Terraform
+        if: steps.gate.outputs.selected == 'true'
+        id: bucket
+        working-directory: infra/environments/${{ matrix.env }}
+        run: |
+          BUCKET_NAME=$(terraform output -raw web_bucket_name 2>/dev/null || echo "")
+          if [ -z "${BUCKET_NAME}" ]; then
+            echo "::error::Could not retrieve web_bucket_name from Terraform outputs"
+            exit 1
+          fi
+          echo "name=${BUCKET_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Get API configuration from Terraform
+        if: steps.gate.outputs.selected == 'true'
+        id: api
+        working-directory: infra/environments/${{ matrix.env }}
+        run: |
+          API_BASE_URL=$(terraform output -raw api_base_url 2>/dev/null || echo "")
+          PRESIGN_SECRET_ARN=$(terraform output -raw presign_secret_arn 2>/dev/null || echo "")
+          echo "api_base_url=${API_BASE_URL}" >> "$GITHUB_OUTPUT"
+          echo "presign_secret_arn=${PRESIGN_SECRET_ARN}" >> "$GITHUB_OUTPUT"
+
+      - name: Get PRESIGN_API_KEY from Secrets Manager
+        if: steps.gate.outputs.selected == 'true'
+        id: secrets
+        env:
+          PRESIGN_API_KEY_GITHUB: ${{ secrets.PRESIGN_API_KEY }}
+        run: |
+          PRESIGN_SECRET_ARN="${{ steps.api.outputs.presign_secret_arn }}"
+          PRESIGN_API_KEY=""
+          
+          if [ -n "${PRESIGN_SECRET_ARN}" ]; then
+            PRESIGN_API_KEY=$(aws secretsmanager get-secret-value \
+              --secret-id "${PRESIGN_SECRET_ARN}" \
+              --query 'SecretString' \
+              --output text 2>/dev/null | jq -r '.PRESIGN_API_KEY' || echo "")
+          fi
+          
+          # Fallback to GitHub secret if AWS Secrets Manager doesn't have it yet
+          if [ -z "${PRESIGN_API_KEY}" ] && [ -n "${PRESIGN_API_KEY_GITHUB}" ]; then
+            PRESIGN_API_KEY="${PRESIGN_API_KEY_GITHUB}"
+          fi
+          
+          if [ -z "${PRESIGN_API_KEY}" ]; then
+            echo "::warning::PRESIGN_API_KEY not found, using placeholder"
+            PRESIGN_API_KEY="REPLACE_WITH_SECRET_KEY"
+          fi
+          
+          echo "presign_api_key=${PRESIGN_API_KEY}" >> "$GITHUB_OUTPUT"
+
+      - name: Inject configuration into web assets
+        if: steps.gate.outputs.selected == 'true'
+        run: |
+          set -euo pipefail
+          
+          API_BASE_URL="${{ steps.api.outputs.api_base_url }}"
+          PRESIGN_API_KEY="${{ steps.secrets.outputs.presign_api_key }}"
+          
+          echo "::notice::Injecting API configuration: ${API_BASE_URL}"
+          
+          # Replace placeholders in app.js
+          sed -i \
+            -e "s|REPLACE_WITH_API_BASE_URL|${API_BASE_URL}|g" \
+            -e "s|REPLACE_WITH_SECRET_KEY|${PRESIGN_API_KEY}|g" \
+            web-staging/app.js
+
+      - name: Deploy frontend to S3
+        if: steps.gate.outputs.selected == 'true'
+        run: |
+          set -euo pipefail
+          
+          BUCKET_NAME="${{ steps.bucket.outputs.name }}"
+          
+          echo "::notice::Deploying frontend to s3://${BUCKET_NAME}"
+          
+          # Sync web-staging to S3 bucket
+          aws s3 sync web-staging/ "s3://${BUCKET_NAME}/" \
+            --delete \
+            --cache-control "public, max-age=3600" \
+            --exclude ".git*" \
+            --exclude "*.map"
+          
+          # Set specific cache control for index.html (no caching)
+          aws s3 cp "web-staging/index.html" "s3://${BUCKET_NAME}/index.html" \
+            --cache-control "public, max-age=0, must-revalidate" \
+            --content-type "text/html" \
+            --metadata-directive REPLACE
+          
+          echo "::notice::Frontend deployment to ${{ matrix.env }} complete"
+
+      - name: Invalidate CloudFront cache
+        if: steps.gate.outputs.selected == 'true'
+        working-directory: infra/environments/${{ matrix.env }}
+        run: |
+          DISTRIBUTION_ID=$(terraform output -raw cloudfront_distribution_id 2>/dev/null || echo "")
+          
+          if [ -n "${DISTRIBUTION_ID}" ]; then
+            echo "::notice::Creating CloudFront invalidation for distribution: ${DISTRIBUTION_ID}"
+            aws cloudfront create-invalidation \
+              --distribution-id "${DISTRIBUTION_ID}" \
+              --paths "/*" \
+              || echo "::warning::Failed to create CloudFront invalidation"
+          else
+            echo "::warning::CloudFront distribution ID not found in outputs"
+          fi
+
+      - name: Output Website URL
+        if: steps.gate.outputs.selected == 'true'
+        working-directory: infra/environments/${{ matrix.env }}
+        run: |
+          WEBSITE_URL=$(terraform output -raw website_url 2>/dev/null || echo "")
+          if [ -n "${WEBSITE_URL}" ]; then
+            echo "::notice::Website URL for ${{ matrix.env }}: https://${WEBSITE_URL}"
+          fi
+
+  # Optional: Summary job to report overall status
+  summary:
+    name: Deployment Summary
+    runs-on: ubuntu-l
+
