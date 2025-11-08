@@ -530,7 +530,9 @@ jobs:
     needs: [ detect, plan-apply, build-web ]
     if: |
       always() &&
-      needs.plan-apply.result == 'success'
+      needs.plan-apply.result == 'success' &&
+      github.event_name == 'push' &&
+      (github.ref_name == 'master' || github.ref_name == 'main')
     strategy:
       fail-fast: false
       matrix:
@@ -675,14 +677,14 @@ jobs:
           
           echo "::notice::Deploying frontend to s3://${BUCKET_NAME}"
           
-          # Sync web-staging to S3 bucket
+          # Sync web-staging to S3 bucket with default caching
           aws s3 sync web-staging/ "s3://${BUCKET_NAME}/" \
             --delete \
             --cache-control "public, max-age=3600" \
             --exclude ".git*" \
             --exclude "*.map"
           
-          # Set specific cache control for index.html (no caching)
+          # Set specific cache control for index.html (no caching for entry point)
           aws s3 cp "web-staging/index.html" "s3://${BUCKET_NAME}/index.html" \
             --cache-control "public, max-age=0, must-revalidate" \
             --content-type "text/html" \
@@ -718,5 +720,28 @@ jobs:
   # Optional: Summary job to report overall status
   summary:
     name: Deployment Summary
-    runs-on: ubuntu-l
-
+    runs-on: ubuntu-latest
+    needs: [ preflight, unit, detect, build, build-web, plan-apply, deploy-web ]
+    if: always()
+    steps:
+      - name: Check deployment status
+        run: |
+          echo "::group::Deployment Summary"
+          echo "Preflight: ${{ needs.preflight.result }}"
+          echo "Unit Tests: ${{ needs.unit.result }}"
+          echo "Detect Changes: ${{ needs.detect.result }}"
+          echo "Build Lambdas: ${{ needs.build.result }}"
+          echo "Build Web: ${{ needs.build-web.result }}"
+          echo "Plan/Apply: ${{ needs.plan-apply.result }}"
+          echo "Deploy Web: ${{ needs.deploy-web.result }}"
+          echo "::endgroup::"
+          
+          # Fail if any critical job failed
+          if [ "${{ needs.preflight.result }}" == "failure" ] || \
+             [ "${{ needs.unit.result }}" == "failure" ] || \
+             [ "${{ needs.build.result }}" == "failure" ]; then
+            echo "::error::Critical jobs failed"
+            exit 1
+          fi
+          
+          echo "::notice::Deployment workflow completed"
