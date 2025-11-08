@@ -17,20 +17,35 @@ ALLOWED_CONTENT_TYPES = [
                             "application/octet-stream",
                         ]
 
-_api_key_cache = None
+_api_key_cache = None  # stores tuple (value, ts)
+_API_KEY_TTL = 300  # seconds
 
 def _get_api_key(): 
     global _api_key_cache
-    if _api_key_cache:
-        return _api_key_cache
+    now = int(time.time())
+    if _api_key_cache and (now - _api_key_cache[1] < _API_KEY_TTL):
+        return _api_key_cache[0]
     if not SECRET_ID:
         return None
-    v = secrets.get_secret_value(SecretID=SECRET_ID)
-    _api_key_cache = json.loads(v['SecretString'])['PRESIGN_API_KEY']
-    return _api_key_cache
+    # Boto3 expects 'SecretId' (lowercase d)
+    v = secrets.get_secret_value(SecretId=SECRET_ID)
+    val = json.loads(v.get('SecretString') or '{}').get('PRESIGN_API_KEY')
+    _api_key_cache = (val, now)
+    return val
+
+def _cors_headers():
+    return {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Api-Key',
+        'Access-Control-Allow-Methods': 'POST,OPTIONS'
+    }
 
 def _unauth(body="unauthorized"):
-    return { 'statusCode': 401, 'body': body }
+    return { 
+        'statusCode': 401, 
+        'headers': _cors_headers(),
+        'body': body 
+    }
 
 def handler(event, context):
     headers = { (k or '').lower(): v for k, v in (event.get('headers') or {}).items() }
@@ -40,8 +55,9 @@ def handler(event, context):
             return _unauth()
         
     body = json.loads(event.get('body') or '{}' ) 
-    content_type = body.get('content_type')
-    key_prefix = body.get('prefix', 'user-uploads/')
+    content_type = body.get('contentType') or body.get('content_type')
+    # Normalize prefix to avoid double slashes
+    key_prefix = (body.get('prefix') or 'user-uploads').rstrip('/')
     filename = body.get('filename', f'upload-{int(time.time())}')
     
     # Validate content type
@@ -49,6 +65,7 @@ def handler(event, context):
     if not content_type or content_type not in ALLOWED_CONTENT_TYPES:
         return {
             'statusCode': 400,
+            'headers': _cors_headers(),
             'body': json.dumps({'error': 'Invalid or missing content_type'})
         }
     
@@ -64,6 +81,7 @@ def handler(event, context):
     print("Generated presigned URL:", url)
     return {
         'statusCode': 200,
+        'headers': _cors_headers(),
         'body': json.dumps({'url': url, 'key': key})
     }
     
