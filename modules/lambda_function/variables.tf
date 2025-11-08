@@ -8,9 +8,11 @@ variable "role_arn" {
   type        = string
 }
 
+# Prebuilt zip 
 variable "filename" {
   description = "Path to zip artifact"
   type        = string
+  default     = ""
 }
 
 variable "runtime" {
@@ -41,4 +43,17 @@ variable "env" {
   description = "Environment variables"
   type        = map(string)
   default     = {}
+}
+
+# Prefer over filename
+variable "source_dir" {
+  type    = string
+  default = ""
+}
+
+
+
+variable "excludes" {
+  type    = list(string)
+  default = ["tests", "__pycache__", "*.pyc", ".pytest_cache"]
 }
