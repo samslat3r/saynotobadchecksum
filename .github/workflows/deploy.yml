@@ -60,6 +60,11 @@ jobs:
           # FIX: Check for the correct handler.py file name
           [ -f "lambdas/process_upload/handler.py" ] || { echo "::error::Missing handler.py in lambdas/process_upload (found hander.py instead?)"; exit 1; }
       
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+      
       - name: Validate Terraform formatting (recursive)
         run: |
           # Check if all Terraform files are properly formatted
