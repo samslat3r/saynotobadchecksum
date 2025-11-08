@@ -30,11 +30,11 @@ async function list() {
     const r = await fetch(`${API}/files`); 
     if (!r.ok) return; 
     const items = await r.json();
-    const ul= document.getElementById('list')
+    const ul = document.getElementById('uploaded-files-list');
     ul.innerHTML = '';
     for (const item of items) {
         const li = document.createElement('li');
-        li.textContent = `${item.object_Key} - ${its_status} - sha256: ${item.sha256}`;
+        li.textContent = `${item.object_key} - ${item.status} - sha256: ${item.sha256}`;
         ul.appendChild(li);
     }
 }
