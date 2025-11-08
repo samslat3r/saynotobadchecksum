@@ -739,7 +739,7 @@ jobs:
           echo "Build Web: ${{ needs.build-web.result }}"
           echo "Plan/Apply: ${{ needs.plan-apply.result }}"
           echo "Deploy Web: ${{ needs.deploy-web.result }}"
-          echo "::endgroup::"
+          echo "::enDgroup::"
           
           # Fail if any critical job failed
           if [ "${{ needs.preflight.result }}" == "failure" ] || \
