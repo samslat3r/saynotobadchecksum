@@ -29,11 +29,8 @@ locals {
 }
 
 # Import blocks for existing AWS resources
-# These will automatically import resources if they exist outside of state
+# These will automatically import resources if they exist outside of .tfstate
 # Can be removed after initial import is complete
-
-# COMMENTED OUT: Enable these after staging infrastructure is initially deployed
-# Then these blocks will handle importing any resources created manually
 
 # import {
 #   to = module.s3.aws_s3_bucket.main
@@ -75,8 +72,6 @@ locals {
 #   id = "sam-secure-staging-gha-oidc"
 # }
 
-# Note: Lambda functions will be created fresh if they don't exist
-# Uncomment these if Lambda functions exist and need to be imported:
 # import {
 #   to = module.lambda_presign.aws_lambda_function.main
 #   id = "sam-secure-staging-presign"
@@ -102,7 +97,7 @@ module "ddb" {
   tags       = { Project = local.project, Env = local.env }
 }
 
-# Secrets are created EMPTY; CI injects values post-apply
+# Secrets are created empty; CI injects values post-apply
 
 module "secrets" {
   source      = "../../../modules/secrets"

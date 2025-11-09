@@ -29,11 +29,10 @@ locals {
 }
 
 # Import blocks for existing AWS resources
-# These will automatically import resources if they exist outside of state
+# These will automatically import resources if they exist outside of .tfstate
 # Can be removed after initial import is complete
 
-# COMMENTED OUT: Resources already imported into state
-# Uncomment if you need to re-import resources that were created outside Terraform
+# Resources already imported into .tfstate
 
 # import {
 #   to = module.s3.aws_s3_bucket.main
@@ -75,8 +74,7 @@ locals {
 #   id = "sam-secure-dev-gha-oidc"
 # }
 
-# Note: Lambda functions will be created fresh if they don't exist
-# Uncomment these if Lambda functions exist and need to be imported:
+
 # import {
 #   to = module.lambda_presign.aws_lambda_function.main
 #   id = "sam-secure-dev-presign"
@@ -102,7 +100,7 @@ module "ddb" {
   tags       = { Project = local.project, Env = local.env }
 }
 
-# Secrets are created EMPTY; CI injects values post-apply
+# Secrets are created empty; CI injects values post-apply
 
 module "secrets" {
   source      = "../../../modules/secrets"

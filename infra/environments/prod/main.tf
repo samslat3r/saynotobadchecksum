@@ -29,9 +29,8 @@ locals {
 }
 
 # Import blocks for existing AWS resources
-
-
-#  Enable these after prod infrastructure is initially deployed
+# These will automatically import resources if they exist outside of .tfstate
+# Can be removed after initial import is complete
 
 
 # import {
@@ -74,8 +73,7 @@ locals {
 #   id = "sam-secure-prod-gha-oidc"
 # }
 
-# Note: Lambda functions will be created fresh if they don't exist
-# Uncomment these if Lambda functions exist and need to be imported:
+
 # import {
 #   to = module.lambda_presign.aws_lambda_function.main
 #   id = "sam-secure-prod-presign"
@@ -101,7 +99,7 @@ module "ddb" {
   tags       = { Project = local.project, Env = local.env }
 }
 
-# Secrets are created EMPTY; CI injects values post-apply
+# Secrets are created empty; CI injects values post-apply
 
 module "secrets" {
   source      = "../../../modules/secrets"
