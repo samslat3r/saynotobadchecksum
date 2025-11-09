@@ -68,19 +68,25 @@ import {
   id = "sam-secure-prod-gha-oidc"
 }
 
+import {
+  to = module.lambda_presign.aws_lambda_function.main
+  id = "sam-secure-prod-presign"
+}
 
-# import {
-#   to = module.lambda_presign.aws_lambda_function.main
-#   id = "sam-secure-prod-presign"
-# }
-# import {
-#   to = module.lambda_list.aws_lambda_function.main
-#   id = "sam-secure-prod-listfiles"
-# }
-# import {
-#   to = module.lambda_process.aws_lambda_function.main
-#   id = "sam-secure-prod-process-upload"
-# }
+import {
+  to = module.lambda_list.aws_lambda_function.main
+  id = "sam-secure-prod-listfiles"
+}
+
+import {
+  to = module.lambda_process.aws_lambda_function.main
+  id = "sam-secure-prod-process-upload"
+}
+
+import {
+  to = module.cloudfront.aws_cloudfront_origin_access_control.main
+  id = "E3TQST8XM4B4EF"
+}
 
 module "s3" {
   source      = "../../../modules/s3_uploads"

@@ -67,18 +67,25 @@ import {
   id = "sam-secure-staging-gha-oidc"
 }
 
-# import {
-#   to = module.lambda_presign.aws_lambda_function.main
-#   id = "sam-secure-staging-presign"
-# }
-# import {
-#   to = module.lambda_list.aws_lambda_function.main
-#   id = "sam-secure-staging-listfiles"
-# }
-# import {
-#   to = module.lambda_process.aws_lambda_function.main
-#   id = "sam-secure-staging-process-upload"
-# }
+import {
+  to = module.lambda_presign.aws_lambda_function.main
+  id = "sam-secure-staging-presign"
+}
+
+import {
+  to = module.lambda_list.aws_lambda_function.main
+  id = "sam-secure-staging-listfiles"
+}
+
+import {
+  to = module.lambda_process.aws_lambda_function.main
+  id = "sam-secure-staging-process-upload"
+}
+
+import {
+  to = module.cloudfront.aws_cloudfront_origin_access_control.main
+  id = "E26Z4QLI8QXN9X"
+}
 
 module "s3" {
   source      = "../../../modules/s3_uploads"
