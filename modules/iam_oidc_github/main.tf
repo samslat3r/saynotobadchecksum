@@ -47,9 +47,8 @@ data "aws_iam_policy_document" "gha_perm" {
       "lambda:*",
       "logs:*",
       "apigateway:*",
-      "iam:PassRole",
-      "iam:ListOpenIDConnectProviders",
-      "iam:GetOpenIDConnectProvider",
+      "cloudfront:*",
+      "iam:*",
 
       # Secrets injection step
 

@@ -32,45 +32,40 @@ locals {
 # These will automatically import resources if they exist outside of .tfstate
 # Can be removed after initial import is complete
 
-# import {
-#   to = module.s3.aws_s3_bucket.main
-#   id = "sam-secure-staging-uploads"
-# }
+import {
+  to = module.s3.aws_s3_bucket.main
+  id = "sam-secure-staging-uploads"
+}
 
-# import {
-#   to = module.ddb.aws_dynamodb_table.main
-#   id = "sam-secure-staging-uploads"
-# }
+import {
+  to = module.ddb.aws_dynamodb_table.main
+  id = "sam-secure-staging-uploads"
+}
 
-# import {
-#   to = module.iam.aws_iam_role.lambda
-#   id = "sam-secure-staging-lambda-role"
-# }
+import {
+  to = module.iam.aws_iam_role.lambda
+  id = "sam-secure-staging-lambda-role"
+}
 
-# import {
-#   to = module.secrets.aws_secretsmanager_secret.presign
-#   id = "sam-secure-staging-presign"
-# }
+import {
+  to = module.secrets.aws_secretsmanager_secret.presign
+  id = "sam-secure-staging-presign"
+}
 
-# import {
-#   to = module.secrets.aws_secretsmanager_secret.vt
-#   id = "sam-secure-staging-vt-api-key"
-# }
+import {
+  to = module.secrets.aws_secretsmanager_secret.vt
+  id = "sam-secure-staging-vt-api-key"
+}
 
-# import {
-#   to = module.web_s3.aws_s3_bucket.web
-#   id = "saynotobadchecksum-web-staging-${data.aws_caller_identity.current.account_id}"
-# }
+import {
+  to = module.web_s3.aws_s3_bucket.web
+  id = "saynotobadchecksum-web-staging-${data.aws_caller_identity.current.account_id}"
+}
 
-# import {
-#   to = module.gha_oidc.aws_iam_openid_connect_provider.github
-#   id = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
-# }
-
-# import {
-#   to = module.gha_oidc.aws_iam_role.gha
-#   id = "sam-secure-staging-gha-oidc"
-# }
+import {
+  to = module.gha_oidc.aws_iam_role.gha
+  id = "sam-secure-staging-gha-oidc"
+}
 
 # import {
 #   to = module.lambda_presign.aws_lambda_function.main
