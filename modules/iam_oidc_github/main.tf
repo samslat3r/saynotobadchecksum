@@ -1,8 +1,7 @@
 # Get current account info
 data "aws_caller_identity" "current" {}
 
-# Since OIDC provider is account-wide and already exists from dev deployment,
-# we just reference it as a data source instead of creating it
+
 data "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
 }
@@ -53,7 +52,8 @@ data "aws_iam_policy_document" "gha_perm" {
       "logs:*",
       "apigateway:*",
       "iam:PassRole",
-
+      "iam:ListOpenIDConnectProviders",
+      "iam:GetOpenIDConnectProvider",
 
       # Secrets injection step
 
