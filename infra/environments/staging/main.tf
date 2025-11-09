@@ -87,6 +87,21 @@ import {
   id = "E26Z4QLI8QXN9X"
 }
 
+import {
+  to = module.api.aws_lambda_permission.invoke["POST-/presign"]
+  id = "sam-secure-staging-presign/AllowAPIGWInvoke-sam-secure-staging-presign"
+}
+
+import {
+  to = module.api.aws_lambda_permission.invoke["GET-/files"]
+  id = "sam-secure-staging-listfiles/AllowAPIGWInvoke-sam-secure-staging-listfiles"
+}
+
+import {
+  to = module.s3_notifications.aws_lambda_permission.s3_invoke
+  id = "sam-secure-staging-process-upload/AllowS3Invoke"
+}
+
 module "s3" {
   source      = "../../../modules/s3_uploads"
   bucket_name = local.bucket_name

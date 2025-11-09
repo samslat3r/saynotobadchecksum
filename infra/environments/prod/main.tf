@@ -88,6 +88,21 @@ import {
   id = "E3TQST8XM4B4EF"
 }
 
+import {
+  to = module.api.aws_lambda_permission.invoke["POST-/presign"]
+  id = "sam-secure-prod-presign/AllowAPIGWInvoke-sam-secure-prod-presign"
+}
+
+import {
+  to = module.api.aws_lambda_permission.invoke["GET-/files"]
+  id = "sam-secure-prod-listfiles/AllowAPIGWInvoke-sam-secure-prod-listfiles"
+}
+
+import {
+  to = module.s3_notifications.aws_lambda_permission.s3_invoke
+  id = "sam-secure-prod-process-upload/AllowS3Invoke"
+}
+
 module "s3" {
   source      = "../../../modules/s3_uploads"
   bucket_name = local.bucket_name
