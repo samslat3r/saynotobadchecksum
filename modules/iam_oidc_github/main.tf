@@ -1,10 +1,15 @@
-# OIDC Provider for GitHub Actions
-resource "aws_iam_openid_connect_provider" "github" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
-  # GitHub's OIDC thumbprint found in https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect
+# Get current account info
+data "aws_caller_identity" "current" {}
 
+# Since OIDC provider is account-wide and already exists from dev deployment,
+# we just reference it as a data source instead of creating it
+data "aws_iam_openid_connect_provider" "github" {
+  url = "https://token.actions.githubusercontent.com"
+}
+
+locals {
+  github_oidc_url = "https://token.actions.githubusercontent.com"
+  github_oidc_arn = data.aws_iam_openid_connect_provider.github.arn
 }
 
 # Trust policy for repo/branch to assume role via OIDC
@@ -13,7 +18,7 @@ data "aws_iam_policy_document" "assume" {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github.arn]
+      identifiers = [local.github_oidc_arn]
     }
     condition {
       test     = "StringEquals"
