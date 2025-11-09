@@ -1,14 +1,10 @@
 # Get current account info
 data "aws_caller_identity" "current" {}
 
-
-data "aws_iam_openid_connect_provider" "github" {
-  url = "https://token.actions.githubusercontent.com"
-}
-
 locals {
   github_oidc_url = "https://token.actions.githubusercontent.com"
-  github_oidc_arn = data.aws_iam_openid_connect_provider.github.arn
+  # Hardcode the OIDC provider ARN to avoid permission issues during plan
+  github_oidc_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
 }
 
 # Trust policy for repo/branch to assume role via OIDC
