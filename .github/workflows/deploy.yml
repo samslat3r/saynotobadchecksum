@@ -373,7 +373,7 @@ jobs:
         env:
           TF_PLUGIN_CACHE_DIR: ~/.terraform.d/plugin-cache
         run: |
-          terraform init -input=false -backend=true
+          terraform init -input=false -backend-config=backend.hcl
           
           # Verify backend is configured
           terraform providers
@@ -606,7 +606,7 @@ jobs:
       - name: Terraform Init
         if: steps.gate.outputs.selected == 'true'
         working-directory: infra/environments/${{ matrix.env }}
-        run: terraform init -input=false -backend=true
+        run: terraform init -input=false -backend-config=backend.hcl
 
       - name: Get S3 bucket name from Terraform
         if: steps.gate.outputs.selected == 'true'

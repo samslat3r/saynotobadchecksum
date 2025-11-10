@@ -1,5 +1,10 @@
 terraform {
   required_version = ">= 1.6.0"
+  
+  backend "s3" {
+    # Backend configuration is provided via backend.hcl file
+  }
+  
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -26,6 +31,90 @@ locals {
     Project = local.project
     Env     = local.env
   }
+}
+
+# Import blocks for existing AWS resources
+# These will automatically import resources if they exist outside of .tfstate
+# Will be removed after successful import in GitHub Actions
+
+import {
+  to = module.s3.aws_s3_bucket.main
+  id = "sam-secure-staging-uploads"
+}
+
+import {
+  to = module.ddb.aws_dynamodb_table.main
+  id = "sam-secure-staging-uploads"
+}
+
+import {
+  to = module.iam.aws_iam_role.lambda
+  id = "sam-secure-staging-lambda-role"
+}
+
+import {
+  to = module.secrets.aws_secretsmanager_secret.presign
+  id = "sam-secure-staging-presign"
+}
+
+import {
+  to = module.secrets.aws_secretsmanager_secret.vt
+  id = "sam-secure-staging-vt-api-key"
+}
+
+import {
+  to = module.web_s3.aws_s3_bucket.web
+  id = "saynotobadchecksum-web-staging-${data.aws_caller_identity.current.account_id}"
+}
+
+import {
+  to = module.gha_oidc.aws_iam_role.gha
+  id = "sam-secure-staging-gha-oidc"
+}
+
+import {
+  to = module.lambda_presign.aws_lambda_function.main
+  id = "sam-secure-staging-presign"
+}
+
+import {
+  to = module.lambda_list.aws_lambda_function.main
+  id = "sam-secure-staging-listfiles"
+}
+
+import {
+  to = module.lambda_process.aws_lambda_function.main
+  id = "sam-secure-staging-process-upload"
+}
+
+import {
+  to = module.cloudfront.aws_cloudfront_origin_access_control.main
+  id = "E26Z4QLI8QXN9X"
+}
+
+import {
+  to = module.cloudfront.aws_cloudfront_distribution.main
+  id = "E1XZIN1T4992M1"
+}
+
+import {
+  to = module.api.aws_lambda_permission.invoke["POST-/presign"]
+  id = "sam-secure-staging-presign/AllowAPIGWInvoke-sam-secure-staging-presign"
+}
+
+import {
+  to = module.api.aws_lambda_permission.invoke["GET-/files"]
+  id = "sam-secure-staging-listfiles/AllowAPIGWInvoke-sam-secure-staging-listfiles"
+}
+
+import {
+  to = module.s3_notifications.aws_lambda_permission.s3_invoke
+  id = "sam-secure-staging-process-upload/AllowS3Invoke"
+}
+
+import {
+  to = aws_s3_bucket_policy.web_cloudfront
+  id = "saynotobadchecksum-web-staging-${data.aws_caller_identity.current.account_id}"
 }
 
 module "s3" {
