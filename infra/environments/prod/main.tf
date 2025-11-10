@@ -89,6 +89,11 @@ import {
 }
 
 import {
+  to = module.cloudfront.aws_cloudfront_distribution.main
+  id = "E2R9YCVEP38VQT"
+}
+
+import {
   to = module.api.aws_lambda_permission.invoke["POST-/presign"]
   id = "sam-secure-prod-presign/AllowAPIGWInvoke-sam-secure-prod-presign"
 }
@@ -101,6 +106,11 @@ import {
 import {
   to = module.s3_notifications.aws_lambda_permission.s3_invoke
   id = "sam-secure-prod-process-upload/AllowS3Invoke"
+}
+
+import {
+  to = aws_s3_bucket_policy.web_cloudfront
+  id = "saynotobadchecksum-web-prod-${data.aws_caller_identity.current.account_id}"
 }
 
 module "s3" {

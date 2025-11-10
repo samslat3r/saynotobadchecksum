@@ -88,6 +88,11 @@ import {
 }
 
 import {
+  to = module.cloudfront.aws_cloudfront_distribution.main
+  id = "E1XZIN1T4992M1"
+}
+
+import {
   to = module.api.aws_lambda_permission.invoke["POST-/presign"]
   id = "sam-secure-staging-presign/AllowAPIGWInvoke-sam-secure-staging-presign"
 }
@@ -100,6 +105,11 @@ import {
 import {
   to = module.s3_notifications.aws_lambda_permission.s3_invoke
   id = "sam-secure-staging-process-upload/AllowS3Invoke"
+}
+
+import {
+  to = aws_s3_bucket_policy.web_cloudfront
+  id = "saynotobadchecksum-web-staging-${data.aws_caller_identity.current.account_id}"
 }
 
 module "s3" {
