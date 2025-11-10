@@ -448,8 +448,8 @@ jobs:
           set -euo pipefail
           
           # Get secret ARNs from Terraform outputs
-          VT_SECRET_ARN=$(terraform output -raw vt_secret_arn 2>/dev/null || echo "")
-          PRESIGN_SECRET_ARN=$(terraform output -raw presign_secret_arn 2>/dev/null || echo "")
+          VT_SECRET_ARN=$(terraform output -raw vt_secret_arn 2>/dev/null | grep -v "Warning:" | grep -v "│" || echo "")
+          PRESIGN_SECRET_ARN=$(terraform output -raw presign_secret_arn 2>/dev/null | grep -v "Warning:" | grep -v "│" || echo "")
           
           # Update VT API key if both ARN and key exist
           if [ -n "${VT_SECRET_ARN}" ] && [ -n "${VT_API_KEY}" ]; then
@@ -496,7 +496,7 @@ jobs:
           
           for fn in presign list_files process_upload; do
             output_name="${output_map[$fn]}"
-            FUNCTION_NAME=$(terraform output -raw "$output_name" 2>/dev/null || echo "")
+            FUNCTION_NAME=$(terraform output -raw "$output_name" 2>/dev/null | grep -v "Warning:" | grep -v "│" || echo "")
             
             if [ -n "${FUNCTION_NAME}" ]; then
               echo "Testing Lambda: ${FUNCTION_NAME}"
@@ -523,7 +523,7 @@ jobs:
           (github.ref_name == 'master' || github.ref_name == 'main')
         working-directory: infra/environments/${{ matrix.env }}
         run: |
-          API_ENDPOINT=$(terraform output -raw api_base_url 2>/dev/null || echo "")
+          API_ENDPOINT=$(terraform output -raw api_base_url 2>/dev/null | grep -v "Warning:" | grep -v "│" || echo "")
           if [ -n "${API_ENDPOINT}" ]; then
             echo "::notice::API Endpoint for ${{ matrix.env }}: ${API_ENDPOINT}"
             echo "Update web/app.js with this endpoint"
@@ -612,7 +612,12 @@ jobs:
         id: bucket
         working-directory: infra/environments/${{ matrix.env }}
         run: |
-          BUCKET_NAME=$(terraform output -raw web_bucket_name 2>/dev/null || echo "")
+          # First ensure we have the latest state
+          terraform refresh > /dev/null 2>&1 || true
+          
+          # Get the bucket name, filtering out any warning messages
+          BUCKET_NAME=$(terraform output -raw web_bucket_name 2>/dev/null | grep -v "Warning:" | grep -v "│" || echo "")
+          
           if [ -z "${BUCKET_NAME}" ]; then
             echo "::error::Could not retrieve web_bucket_name from Terraform outputs"
             exit 1
@@ -624,8 +629,9 @@ jobs:
         id: api
         working-directory: infra/environments/${{ matrix.env }}
         run: |
-          API_BASE_URL=$(terraform output -raw api_base_url 2>/dev/null || echo "")
-          PRESIGN_SECRET_ARN=$(terraform output -raw presign_secret_arn 2>/dev/null || echo "")
+          # Get outputs, filtering out any warning messages
+          API_BASE_URL=$(terraform output -raw api_base_url 2>/dev/null | grep -v "Warning:" | grep -v "│" || echo "")
+          PRESIGN_SECRET_ARN=$(terraform output -raw presign_secret_arn 2>/dev/null | grep -v "Warning:" | grep -v "│" || echo "")
           echo "api_base_url=${API_BASE_URL}" >> "$GITHUB_OUTPUT"
           echo "presign_secret_arn=${PRESIGN_SECRET_ARN}" >> "$GITHUB_OUTPUT"
 
@@ -701,7 +707,7 @@ jobs:
         if: steps.gate.outputs.selected == 'true'
         working-directory: infra/environments/${{ matrix.env }}
         run: |
-          DISTRIBUTION_ID=$(terraform output -raw cloudfront_distribution_id 2>/dev/null || echo "")
+          DISTRIBUTION_ID=$(terraform output -raw cloudfront_distribution_id 2>/dev/null | grep -v "Warning:" | grep -v "│" || echo "")
           
           if [ -n "${DISTRIBUTION_ID}" ]; then
             echo "::notice::Creating CloudFront invalidation for distribution: ${DISTRIBUTION_ID}"
@@ -717,7 +723,7 @@ jobs:
         if: steps.gate.outputs.selected == 'true'
         working-directory: infra/environments/${{ matrix.env }}
         run: |
-          WEBSITE_URL=$(terraform output -raw website_url 2>/dev/null || echo "")
+          WEBSITE_URL=$(terraform output -raw website_url 2>/dev/null | grep -v "Warning:" | grep -v "│" || echo "")
           if [ -n "${WEBSITE_URL}" ]; then
             echo "::notice::Website URL for ${{ matrix.env }}: https://${WEBSITE_URL}"
           fi
