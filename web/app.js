@@ -34,7 +34,13 @@ async function list() {
     ul.innerHTML = '';
     for (const item of items) {
         const li = document.createElement('li');
-        li.textContent = `${item.object_key} - ${item.status} - sha256: ${item.sha256}`;
+        const sizeKB = item.size ? (item.size / 1024).toFixed(2) + ' KB' : 'unknown';
+        const sha256Short = item.sha256 && item.sha256 !== 'n/a' ? item.sha256.substring(0, 16) + '...' : 'n/a';
+        const statusBadge = item.status === 'clean' ? '✓' : 
+                           item.status === 'error' ? '✗' : 
+                           item.status === 'deleted_malicious' ? '🚫' : 
+                           item.status;
+        li.textContent = `${item.object_key} - ${sizeKB} - ${statusBadge} - sha256: ${sha256Short}`;
         ul.appendChild(li);
     }
 }
