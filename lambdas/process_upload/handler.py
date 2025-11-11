@@ -63,8 +63,17 @@ def handler(event, context):
         key = urllib.parse.unquote_plus(record['s3']['object']['key'])
         uploaded_at = record.get('eventTime', datetime.now(timezone.utc).isoformat()) + 'Z'
         now = datetime.now(timezone.utc).isoformat() + 'Z'
+        
+        # Calculate hash first, before any VT operations that might fail
+        sha256 = 'n/a'
+        size = record['s3']['object'].get('size', 0)
         try:
             sha256, size = _sha256_stream(bucket, key)
+        except Exception as e:
+            # If hash calculation fails, still continue to record the file
+            print(f"Failed to calculate hash: {e}")
+        
+        try:
             vt_key = _get_vt_key()
             vt = _vt_lookup(sha256, vt_key)
             
@@ -90,12 +99,13 @@ def handler(event, context):
                 'uploader': record.get('userIdentity', {}).get('principalId', 'unknown')
             })
         except Exception as e:
+            # VT lookup failed, but we still have the hash
             table.put_item(Item={
                 'id': key,
                 'object_key': key,
                 'bucket': bucket,
-                'size': record['s3']['object'].get('size', 0),
-                'sha256': 'n/a',
+                'size': size,
+                'sha256': sha256,
                 'status': 'error',
                 'error': str(e),
                 'uploaded_at': uploaded_at,
