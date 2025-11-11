@@ -73,22 +73,25 @@ def handler(event, context):
                 #delete object from s3 bucket
                 s3.delete_object(Bucket=bucket, Key=key)
                 status = 'deleted_malicious'
-                
-                table.put_item(Item={
-                    'object_key': key,
-                    'bucket': bucket,
-                    'size': size,
-                    'sha256': sha256,
-                    'status': status,
-                    'vt_malicious': vt['malicious'],
-                    'vt_suspicious': vt['suspicious'],
-                    'vt_undetected': vt['undetected'],
-                    'uploaded_at': uploaded_at,
-                    'scanned_at': now,
-                    'uploader': record.get('userIdentity', {}).get('principalId', 'unknown')
-                })
+            
+            # Always write to DynamoDB regardless of status
+            table.put_item(Item={
+                'id': key,
+                'object_key': key,
+                'bucket': bucket,
+                'size': size,
+                'sha256': sha256,
+                'status': status,
+                'vt_malicious': vt['malicious'],
+                'vt_suspicious': vt['suspicious'],
+                'vt_undetected': vt['undetected'],
+                'uploaded_at': uploaded_at,
+                'scanned_at': now,
+                'uploader': record.get('userIdentity', {}).get('principalId', 'unknown')
+            })
         except Exception as e:
             table.put_item(Item={
+                'id': key,
                 'object_key': key,
                 'bucket': bucket,
                 'size': record['s3']['object'].get('size', 0),
