@@ -1,10 +1,10 @@
 terraform {
   required_version = ">= 1.6.0"
-  
+
   backend "s3" {
     # Backend configuration is provided via backend.hcl file
   }
-  
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
